@@ -153,6 +153,25 @@ describe('manager flow', () => {
     expect(screen.getByText('Choose a JPG, PNG or WebP image.')).toBeInTheDocument()
   })
 
+  it('accepts several menu pages, up to five, and lets you remove one', async () => {
+    const user = userEvent.setup()
+    await signInDirectly()
+    open('/upload')
+    const page = (n) => new File(['x'], `page-${n}.png`, { type: 'image/png' })
+    await user.upload(await screen.findByLabelText('Menu photo'), [page(1), page(2)])
+    expect(screen.getByRole('img', { name: 'Menu page 1' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Menu page 2' })).toBeInTheDocument()
+    expect(screen.getByText(/2 of 5 photos/)).toBeInTheDocument()
+
+    await user.upload(screen.getByLabelText('Menu photo'), [page(3), page(4), page(5), page(6)])
+    expect(screen.getByText(/5 of 5 photos/)).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('You can add up to 5 photos.')
+
+    await user.click(screen.getByRole('button', { name: 'Remove page 1' }))
+    expect(screen.getByText(/4 of 5 photos/)).toBeInTheDocument()
+    expect(screen.getByText('page-2.png')).toBeInTheDocument()
+  })
+
   it('will not show a QR code for a draft', async () => {
     await signInDirectly()
     const draft = (await api.menus.getAll()).menus.find((menu) => menu.status === 'draft')
