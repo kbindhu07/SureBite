@@ -133,7 +133,7 @@ function writeDb(db) {
   try {
     localStorage.setItem(DB_KEY, JSON.stringify(db))
   } catch {
-    const slim = { ...db, menus: db.menus.map((menu) => ({ ...menu, imageUrl: menu.imageUrl.startsWith('data:image/svg') ? menu.imageUrl : '' })) }
+    const slim = { ...db, menus: db.menus.map((menu) => ({ ...menu, imageUrl: menu.imageUrl.startsWith('data:image/svg') ? menu.imageUrl : '', imageUrls: [] })) }
     localStorage.setItem(DB_KEY, JSON.stringify(slim))
   }
 }
@@ -255,15 +255,17 @@ export const mockApi = {
     async upload(formData) {
       const db = readDb()
       const user = requireUser(db)
-      const file = formData.get('image')
+      const files = formData.getAll('image')
+      const file = files[0]
       const name = String(formData.get('name') || '').trim()
       const currency = String(formData.get('currency') || DEFAULT_CURRENCY)
-      if (!file || typeof file === 'string') throw fail(400, 'Choose a menu photo to upload.')
+      if (!file || files.some((entry) => typeof entry === 'string')) throw fail(400, 'Choose a menu photo to upload.')
       if (!CURRENCIES.includes(currency)) throw fail(400, 'Unsupported currency.')
 
-      const imageUrl = await readImage(file)
+      const imageUrls = await Promise.all(files.map(readImage))
+      const imageUrl = imageUrls[0]
       await wait(2600)
-      if (/fail/i.test(file.name)) throw fail(422, 'The extraction service didn’t return a usable draft.')
+      if (files.some((entry) => /fail/i.test(entry.name))) throw fail(422, 'The extraction service didn’t return a usable draft.')
 
       const now = new Date().toISOString()
       const menu = {
@@ -272,6 +274,7 @@ export const mockApi = {
         name: name || 'Untitled menu',
         slug: '',
         imageUrl,
+        imageUrls,
         status: 'draft',
         currency,
         items: extractedItems(0),

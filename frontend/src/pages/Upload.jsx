@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
   Upload as UploadIcon,
+  X,
 } from 'lucide-react'
 import api, { getErrorMessage } from '../api/api'
 import CameraCapture from '../components/CameraCapture'
@@ -21,6 +22,9 @@ import { CURRENCIES, CURRENCY_SYMBOLS, DEFAULT_CURRENCY } from '../utils/constan
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_SIZE_MB = 10
+const MAX_PHOTOS = 10
+
+let nextPhotoId = 0
 
 const PHOTO_TIPS = [
   'Keep the whole menu in frame.',
@@ -55,16 +59,29 @@ function Stepper({ current }) {
   )
 }
 
-function OriginalPreview({ previewUrl, file, currency, badge }) {
+function photoCount(photos) {
+  return `${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`
+}
+
+function OriginalPreview({ photos, currency, badge }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold">Original menu</p>
         <span className="pill pill-green">{badge}</span>
       </div>
-      <img src={previewUrl} alt="The menu photo you uploaded" className="max-h-[30rem] w-full rounded-xl border border-line bg-white object-contain" />
+      <div className="max-h-[30rem] space-y-3 overflow-y-auto">
+        {photos.map((photo, index) => (
+          <img
+            key={photo.id}
+            src={photo.url}
+            alt={`Menu photo ${index + 1} of ${photos.length}`}
+            className="w-full rounded-xl border border-line bg-white object-contain"
+          />
+        ))}
+      </div>
       <p className="mt-2 break-all text-xs text-muted">
-        {file.name} · Currency: {currency}
+        {photos.length === 1 ? photos[0].file.name : photoCount(photos)} · Currency: {currency}
       </p>
     </div>
   )
@@ -79,28 +96,37 @@ function Upload() {
   const [phase, setPhase] = useState('ready')
   const [name, setName] = useState('')
   const [currency, setCurrency] = useState(DEFAULT_CURRENCY)
-  const [file, setFile] = useState(null)
+  const [photos, setPhotos] = useState([])
   const [cameraOpen, setCameraOpen] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState('')
   const [dragging, setDragging] = useState(false)
   const [errors, setErrors] = useState({})
   const [failure, setFailure] = useState('')
 
-  useEffect(() => () => previewUrl && URL.revokeObjectURL(previewUrl), [previewUrl])
+  const photoUrls = useRef([])
+  photoUrls.current = photos.map((photo) => photo.url)
+  useEffect(() => () => photoUrls.current.forEach((url) => URL.revokeObjectURL(url)), [])
 
-  function chooseFile(candidate) {
-    if (!candidate) return
-    if (!ACCEPTED_TYPES.includes(candidate.type)) {
-      setErrors((current) => ({ ...current, file: 'Choose a JPG, PNG or WebP image.' }))
-      return
+  function addFiles(candidates) {
+    const list = Array.from(candidates || [])
+    if (list.length === 0) return
+    let error = ''
+    const accepted = []
+    for (const candidate of list) {
+      if (!ACCEPTED_TYPES.includes(candidate.type)) error = 'Choose a JPG, PNG or WebP image.'
+      else if (candidate.size > MAX_SIZE_MB * 1024 * 1024) error = `Choose an image smaller than ${MAX_SIZE_MB} MB.`
+      else accepted.push(candidate)
     }
-    if (candidate.size > MAX_SIZE_MB * 1024 * 1024) {
-      setErrors((current) => ({ ...current, file: `Choose an image smaller than ${MAX_SIZE_MB} MB.` }))
-      return
-    }
+    const room = MAX_PHOTOS - photos.length
+    if (accepted.length > room) error = `You can add up to ${MAX_PHOTOS} photos per menu.`
+    const added = accepted.slice(0, Math.max(room, 0)).map((candidate) => ({ id: ++nextPhotoId, file: candidate, url: URL.createObjectURL(candidate) }))
+    setErrors((current) => ({ ...current, file: error }))
+    if (added.length) setPhotos((current) => [...current, ...added])
+  }
+
+  function removePhoto(target) {
+    URL.revokeObjectURL(target.url)
+    setPhotos((current) => current.filter((photo) => photo.id !== target.id))
     setErrors((current) => ({ ...current, file: '' }))
-    setFile(candidate)
-    setPreviewUrl(URL.createObjectURL(candidate))
   }
 
   function openCamera() {
@@ -115,7 +141,7 @@ function Upload() {
   function handleDrop(event) {
     event.preventDefault()
     setDragging(false)
-    chooseFile(event.dataTransfer.files[0])
+    addFiles(event.dataTransfer.files)
   }
 
   async function runUpload() {
@@ -123,7 +149,7 @@ function Upload() {
     setFailure('')
     try {
       const formData = new FormData()
-      formData.append('image', file)
+      photos.forEach((photo) => formData.append('image', photo.file))
       formData.append('name', name.trim())
       formData.append('currency', currency)
       const { menu } = await api.menus.upload(formData)
@@ -143,14 +169,14 @@ function Upload() {
     event.preventDefault()
     const found = {}
     if (!name.trim()) found.name = 'Give this menu a name, like “Dinner menu”.'
-    if (!file) found.file = 'Choose a photo of your menu to continue.'
+    if (photos.length === 0) found.file = 'Choose a photo of your menu to continue.'
     setErrors(found)
     if (Object.keys(found).length === 0) runUpload()
   }
 
   function chooseAnother() {
-    setFile(null)
-    setPreviewUrl('')
+    photos.forEach((photo) => URL.revokeObjectURL(photo.url))
+    setPhotos([])
     setPhase('ready')
   }
 
@@ -166,7 +192,7 @@ function Upload() {
         </div>
         <Stepper current={2} />
         <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
-          <OriginalPreview previewUrl={previewUrl} file={file} currency={currency} badge="Photo uploaded" />
+          <OriginalPreview photos={photos} currency={currency} badge={photos.length > 1 ? 'Photos uploaded' : 'Photo uploaded'} />
           <div className="card p-6 sm:p-8" role="status" aria-live="polite">
             <div className="flex flex-col items-center text-center">
               <Loader2 size={40} className="animate-spin text-brand" aria-hidden="true" />
@@ -218,11 +244,11 @@ function Upload() {
         <div>
           <p className="eyebrow">{eyebrow}</p>
           <h1 className="mt-2 text-4xl">Let’s give that another try.</h1>
-          <p className="mt-2 text-sm text-muted">Your photo is still here, but AI couldn’t finish extracting the menu.</p>
+          <p className="mt-2 text-sm text-muted">Your {photos.length > 1 ? 'photos are' : 'photo is'} still here, but AI couldn’t finish extracting the menu.</p>
         </div>
         <Stepper current={2} />
         <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
-          <OriginalPreview previewUrl={previewUrl} file={file} currency={currency} badge="Photo retained" />
+          <OriginalPreview photos={photos} currency={currency} badge={photos.length > 1 ? 'Photos retained' : 'Photo retained'} />
           <div className="card p-6 sm:p-8">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-danger-bg text-danger-text">
               <AlertCircle size={20} aria-hidden="true" />
@@ -230,7 +256,7 @@ function Upload() {
             <span className="pill pill-red mt-4">Extraction failed · Private</span>
             <h2 className="mt-4 text-3xl">We couldn’t finish reading this menu.</h2>
             <p className="mt-3 text-sm text-muted" role="alert">
-              {failure} No dishes were published. You can retry with the same photo or choose a clearer one.
+              {failure} No dishes were published. You can retry with the same {photos.length > 1 ? 'photos' : 'photo'} or choose clearer ones.
             </p>
             <div className="notice notice-red mt-5">
               <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -244,7 +270,7 @@ function Upload() {
                 <RefreshCw size={15} aria-hidden="true" /> Retry extraction
               </button>
               <button type="button" className="btn btn-secondary" onClick={chooseAnother}>
-                <Images size={15} aria-hidden="true" /> Choose another photo
+                <Images size={15} aria-hidden="true" /> Choose other photos
               </button>
             </div>
             <div className="mt-6 border-t border-line pt-5">
@@ -325,38 +351,63 @@ function Upload() {
               onDragLeave={() => setDragging(false)}
               onDrop={handleDrop}
             >
-              {file ? (
+              {photos.length > 0 ? (
                 <>
-                  <img src={previewUrl} alt="Selected menu photo" className="max-h-56 rounded-lg border border-line bg-white object-contain" />
-                  <p className="mt-3 break-all text-sm font-semibold">{file.name}</p>
-                  <p className="text-xs text-muted">{(file.size / 1024 / 1024).toFixed(1)} MB</p>
+                  <ul className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3">
+                    {photos.map((photo, index) => (
+                      <li key={photo.id} className="relative rounded-lg border border-line bg-white p-1.5">
+                        <img src={photo.url} alt={`Selected menu photo ${index + 1}`} className="h-32 w-full rounded object-contain" />
+                        <p className="mt-1 truncate text-[11px] font-semibold" title={photo.file.name}>
+                          {index + 1}. {photo.file.name}
+                        </p>
+                        <p className="text-[11px] text-muted">{(photo.file.size / 1024 / 1024).toFixed(1)} MB</p>
+                        <button
+                          type="button"
+                          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-ink/70 text-white hover:bg-ink"
+                          onClick={() => removePhoto(photo)}
+                          aria-label={`Remove photo ${index + 1}`}
+                        >
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-xs text-muted">
+                    {photoCount(photos)} selected. Add every page of a multi-page menu, in order.
+                  </p>
                 </>
               ) : (
                 <>
                   <ImagePlus size={28} className={`text-brand transition-transform duration-300 ${dragging ? '-translate-y-1 scale-110' : ''}`} aria-hidden="true" />
-                  <p className="mt-3 font-semibold">Drop your menu photo here</p>
-                  <p className="mt-1 text-xs text-muted">Or choose an image from your device.</p>
+                  <p className="mt-3 font-semibold">Drop your menu photos here</p>
+                  <p className="mt-1 text-xs text-muted">Or choose images from your device. Add one photo per page.</p>
                 </>
               )}
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <button type="button" className={`btn btn-sm ${file ? 'btn-secondary' : 'btn-primary'}`} onClick={() => fileInput.current.click()}>
-                  <UploadIcon size={14} aria-hidden="true" /> {file ? 'Choose a different image' : 'Choose image'}
+                <button
+                  type="button"
+                  className={`btn btn-sm ${photos.length ? 'btn-secondary' : 'btn-primary'}`}
+                  onClick={() => fileInput.current.click()}
+                  disabled={photos.length >= MAX_PHOTOS}
+                >
+                  <UploadIcon size={14} aria-hidden="true" /> {photos.length ? 'Add more photos' : 'Choose images'}
                 </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={openCamera}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={openCamera} disabled={photos.length >= MAX_PHOTOS}>
                   <Camera size={14} aria-hidden="true" /> Use camera
                 </button>
               </div>
               <p className="mt-3 text-[11px] text-muted">
-                Use your phone or laptop camera. JPG, PNG or WebP, up to {MAX_SIZE_MB} MB.
+                Use your phone or laptop camera. JPG, PNG or WebP, up to {MAX_SIZE_MB} MB each, {MAX_PHOTOS} photos max.
               </p>
               <input
                 ref={fileInput}
                 type="file"
                 accept={ACCEPTED_TYPES.join(',')}
                 className="sr-only"
+                multiple
                 aria-label="Menu photo"
                 onChange={(event) => {
-                  chooseFile(event.target.files[0])
+                  addFiles(event.target.files)
                   event.target.value = ''
                 }}
               />
@@ -369,7 +420,7 @@ function Upload() {
                 aria-label="Take a menu photo"
                 tabIndex={-1}
                 onChange={(event) => {
-                  chooseFile(event.target.files[0])
+                  addFiles(event.target.files)
                   event.target.value = ''
                 }}
               />
@@ -378,7 +429,7 @@ function Upload() {
                   onClose={() => setCameraOpen(false)}
                   onCapture={(photo) => {
                     setCameraOpen(false)
-                    chooseFile(photo)
+                    addFiles([photo])
                   }}
                 />
               )}
@@ -401,7 +452,7 @@ function Upload() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-muted">{file ? 'Ready when you are.' : 'Choose a photo to continue.'}</p>
+            <p className="text-xs text-muted">{photos.length ? 'Ready when you are.' : 'Choose a photo to continue.'}</p>
             <button type="submit" className="btn btn-primary">
               <Sparkles size={15} aria-hidden="true" /> Upload &amp; extract
             </button>

@@ -9,7 +9,7 @@ import {
   deleteMenu
 } from '../controllers/menuController.js';
 import { authenticateToken } from '../middlewares/authMiddleware.js';
-import { upload } from '../middlewares/uploadMiddleware.js';
+import { uploadMenuPhotos } from '../middlewares/uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -17,7 +17,7 @@ const router = express.Router();
 router.get('/', authenticateToken, getUserMenus);
 
 // Upload and trigger Gemini AI (Results in POST /api/menus/upload)
-router.post('/upload', authenticateToken, upload.single('image'), uploadAndExtract);
+router.post('/upload', authenticateToken, uploadMenuPhotos, uploadAndExtract);
 
 // Fetch a single menu for the Verification Dashboard
 router.get('/:id', authenticateToken, getMenuById);

@@ -78,6 +78,15 @@ const menuSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Every page of a multi-photo menu; imageUrl/cloudinaryPublicId hold the first page
+    imageUrls: {
+      type: [String],
+      default: [],
+    },
+    cloudinaryPublicIds: {
+      type: [String],
+      default: [],
+    },
     items: [menuItemSchema],
     publishedAt: {
       type: Date,

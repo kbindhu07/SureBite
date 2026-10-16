@@ -42,7 +42,30 @@ function ZoomableImage({ imageUrl, alt, zoom, className }) {
   )
 }
 
-function ImageInspector({ imageUrl, alt = 'Original menu photo', caption }) {
+function PageTabs({ count, page, setPage }) {
+  if (count < 2) return null
+  return (
+    <div className="mb-2 flex flex-wrap gap-1.5" role="group" aria-label="Menu pages">
+      {Array.from({ length: count }, (_, index) => (
+        <button
+          key={index}
+          type="button"
+          aria-pressed={page === index}
+          onClick={() => setPage(index)}
+          className={`pill px-2.5 py-1 ${page === index ? 'bg-brand text-white' : 'bg-brand-soft text-ink hover:bg-brand-tint'}`}
+        >
+          Page {index + 1}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ImageInspector({ imageUrls = [], alt = 'Original menu photo', caption }) {
+  const urls = imageUrls.filter(Boolean)
+  const [page, setPage] = useState(0)
+  const imageUrl = urls[Math.min(page, urls.length - 1)]
+  const pageAlt = urls.length > 1 ? `${alt}, page ${page + 1} of ${urls.length}` : alt
   const [zoom, setZoom] = useState(100)
   const [open, setOpen] = useState(false)
   const [drawerZoom, setDrawerZoom] = useState(100)
@@ -67,7 +90,8 @@ function ImageInspector({ imageUrl, alt = 'Original menu photo', caption }) {
 
       {imageUrl ? (
         <>
-          <ZoomableImage imageUrl={imageUrl} alt={alt} zoom={zoom} className="max-h-[32rem]" />
+          <PageTabs count={urls.length} page={page} setPage={setPage} />
+          <ZoomableImage imageUrl={imageUrl} alt={pageAlt} zoom={zoom} className="max-h-[32rem]" />
           <div className="mt-2">
             <ZoomControls zoom={zoom} setZoom={setZoom} />
           </div>
@@ -91,7 +115,8 @@ function ImageInspector({ imageUrl, alt = 'Original menu photo', caption }) {
                 <X size={14} /> Close
               </button>
             </div>
-            <ZoomableImage imageUrl={imageUrl} alt={alt} zoom={drawerZoom} className="min-h-0 flex-1" />
+            <PageTabs count={urls.length} page={page} setPage={setPage} />
+            <ZoomableImage imageUrl={imageUrl} alt={pageAlt} zoom={drawerZoom} className="min-h-0 flex-1" />
             <ZoomControls zoom={drawerZoom} setZoom={setDrawerZoom} />
           </div>
         </div>,

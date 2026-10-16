@@ -145,6 +145,22 @@ describe('manager flow', () => {
     expect(screen.getByRole('button', { name: /Retry extraction/ })).toBeInTheDocument()
   })
 
+  it('accepts several menu photos and lets you remove one', async () => {
+    const user = userEvent.setup()
+    await signInDirectly()
+    open('/upload')
+    await user.upload(await screen.findByLabelText('Menu photo'), [
+      new File(['x'], 'page-1.png', { type: 'image/png' }),
+      new File(['y'], 'page-2.png', { type: 'image/png' }),
+    ])
+    expect(screen.getByText(/2 photos selected/)).toBeInTheDocument()
+    await user.upload(screen.getByLabelText('Menu photo'), new File(['z'], 'page-3.png', { type: 'image/png' }))
+    expect(screen.getByText(/3 photos selected/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove photo 2' }))
+    expect(screen.getByText(/2 photos selected/)).toBeInTheDocument()
+    expect(screen.queryByText(/page-2\.png/)).not.toBeInTheDocument()
+  })
+
   it('rejects files that are not images', async () => {
     const user = userEvent.setup({ applyAccept: false })
     await signInDirectly()

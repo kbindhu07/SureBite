@@ -16,33 +16,42 @@ export const getUserMenus = async (req, res) => {
 
 export const uploadAndExtract = async (req, res) => {
   try {
-    if (!req.file) {
+    const files = req.files || [];
+    if (files.length === 0) {
       return res.status(400).json({ message: 'Please upload a menu image.' });
     }
 
     const { name, currency } = req.body;
-    
-    // 1. Upload the image directly to Cloudinary and extract dishes with Gemini concurrently
-    const [cloudinaryResult, extractedDishes] = await Promise.all([
-      uploadToCloudinary(req.file.buffer, { folder: 'surebite/menus' }),
-      extractMenuData(req.file.buffer, req.file.mimetype),
+
+    // 1. Upload every page to Cloudinary and extract dishes from each page with Gemini concurrently
+    const [cloudinaryResults, dishesPerPage] = await Promise.all([
+      Promise.all(files.map((file) => uploadToCloudinary(file.buffer, { folder: 'surebite/menus' }))),
+      Promise.all(
+        files.map((file, index) =>
+          extractMenuData(file.buffer, file.mimetype).catch((error) => {
+            throw files.length > 1 ? new Error(`Photo ${index + 1}: ${error.message}`) : error;
+          })
+        )
+      ),
     ]);
 
-    // 2. Map the dishes to our database schema
-    const formattedItems = extractedDishes.map((dish) => ({
+    // 2. Merge the pages in order and map the dishes to our database schema
+    const formattedItems = dishesPerPage.flat().map((dish) => ({
       ...dish,
       aiInferred: true,
       isVerified: false,
     }));
 
-    // 3. Save the draft to MongoDB using Cloudinary's secure URL
+    // 3. Save the draft to MongoDB using Cloudinary's secure URLs
     const newMenu = await Menu.create({
       owner: req.user._id,
       name: name || 'New Draft',
       currency: currency || 'INR',
       status: 'draft',
-      imageUrl: cloudinaryResult.secure_url,
-      cloudinaryPublicId: cloudinaryResult.public_id,
+      imageUrl: cloudinaryResults[0].secure_url,
+      cloudinaryPublicId: cloudinaryResults[0].public_id,
+      imageUrls: cloudinaryResults.map((result) => result.secure_url),
+      cloudinaryPublicIds: cloudinaryResults.map((result) => result.public_id),
       items: formattedItems,
     });
 
@@ -161,12 +170,13 @@ export const deleteMenu = async (req, res) => {
       return res.status(404).json({ message: 'Menu not found.' });
     }
 
-    // Clean up uploaded image in Cloudinary if available
-    if (menu.cloudinaryPublicId) {
-      deleteFromCloudinary(menu.cloudinaryPublicId).catch((err) =>
+    // Clean up uploaded images in Cloudinary if available
+    const publicIds = menu.cloudinaryPublicIds?.length ? menu.cloudinaryPublicIds : [menu.cloudinaryPublicId];
+    publicIds.filter(Boolean).forEach((publicId) =>
+      deleteFromCloudinary(publicId).catch((err) =>
         console.warn('Failed to delete image from Cloudinary:', err.message)
-      );
-    }
+      )
+    );
 
     return res.status(200).json({ success: true });
   } catch (error) {

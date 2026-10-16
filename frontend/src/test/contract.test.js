@@ -80,6 +80,15 @@ describe('mock API follows the spec response shapes', () => {
     expect(await api.auth.getMe()).toEqual({ user })
   })
 
+  it('upload keeps every photo of a multi-page menu', async () => {
+    await signIn()
+    const formData = photo()
+    formData.append('image', new File(['fake2'], 'page-2.png', { type: 'image/png' }))
+    const { menu } = await api.menus.upload(formData)
+    expect(menu.imageUrls).toHaveLength(2)
+    expect(menu.imageUrl).toBe(menu.imageUrls[0])
+  })
+
   it('runs upload -> verify -> publish -> QR -> diner', async () => {
     await signIn()
     const before = (await api.menus.getAll()).menus

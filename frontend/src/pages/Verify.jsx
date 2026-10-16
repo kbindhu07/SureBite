@@ -267,7 +267,7 @@ function Verify() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,3.2fr)]">
         <aside className="space-y-4">
-          <ImageInspector imageUrl={menu.imageUrl} alt={`Original photo of ${menu.name}`} caption="Use zoom to inspect small text." />
+          <ImageInspector imageUrls={menu.imageUrls?.length ? menu.imageUrls : [menu.imageUrl]} alt={`Original photo of ${menu.name}`} caption="Use zoom to inspect small text." />
           <div className="notice notice-green">
             <ShieldCheck size={18} className="mt-0.5 shrink-0 text-brand" aria-hidden="true" />
             <div>
